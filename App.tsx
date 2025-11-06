@@ -164,9 +164,9 @@ const App: React.FC = () => {
         
         <header className="mb-8 flex justify-between items-start">
           <div className="text-left">
-            <h2 className="text-3xl md:text-4xl font-bold text-yellow-300 tracking-wider font-heading">VÀNG BẠC HÙNG HẠ</h2>
-            <p className="text-base text-red-100">Đ/c: 136 - Phố huyện</p>
-            <p className="text-base text-red-100">ĐT: 0356999659</p>
+            <h2 className="text-3xl md:text-4xl font-bold text-yellow-300 tracking-wider font-heading">VÀNG BẠC HUYNH HIỀN</h2>
+            <p className="text-base text-red-100">Đ/c: 108 - Phố Ngô xá</p>
+            <p className="text-base text-red-100">ĐT: 0983661316</p>
           </div>
           <Clock />
         </header>
