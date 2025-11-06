@@ -207,9 +207,9 @@ const App = () => {
       React.createElement('div', { className: "w-full max-w-7xl" },
         React.createElement('header', { className: "mb-8 flex justify-between items-start" },
           React.createElement('div', { className: "text-left" },
-            React.createElement('h2', { className: "text-3xl md:text-4xl font-bold text-yellow-300 tracking-wider font-heading" }, "VÀNG BẠC HÙNG HẠ"),
-            React.createElement('p', { className: "text-base text-red-100" }, "Đ/c: 136 - Phố huyện"),
-            React.createElement('p', { className: "text-base text-red-100" }, "ĐT: 0356999659")
+            React.createElement('h2', { className: "text-3xl md:text-4xl font-bold text-yellow-300 tracking-wider font-heading" }, "VÀNG BẠC HUYNH HIỀN"),
+            React.createElement('p', { className: "text-base text-red-100" }, "Đ/c: 108 - Phố Ngô Xá"),
+            React.createElement('p', { className: "text-base text-red-100" }, "ĐT: 0983661316")
           ),
           React.createElement(Clock)
         ),
