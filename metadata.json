@@ -1,0 +1,7 @@
+{
+  "name": "Hồ Sơ Xe",
+  "description": "Ứng dụng thu thập ảnh giấy tờ xe, giấy phép lái xe và CCCD. Hỗ trợ quản lý hồ sơ và theo dõi tiến độ.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
