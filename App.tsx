@@ -1,283 +1,217 @@
-// FIX: Add missing import for React to fix UMD global reference errors.
-import React from 'react';
 
-// Hàm hỗ trợ để phân tích cú pháp CSV đơn giản
-const parseCSV = (text: string): string[][] => {
-  const rows = text.split('\n');
-  return rows.map(row => 
-    row.split(',').map(cell => {
-      // Loại bỏ dấu ngoặc kép ở đầu và cuối nếu có
-      if (cell.startsWith('"') && cell.endsWith('"')) {
-        return cell.slice(1, -1);
-      }
-      return cell;
-    })
-  );
-};
-
-// ID của Google Sheet được chỉ định sẵn
-const GOOGLE_SHEET_ID = '1pjutzB4Bc9WBtqmA3MUoxQ7CoZpBvHBMGR1OxaZQENE';
-
-const Clock: React.FC = () => {
-    const [time, setTime] = React.useState(new Date());
-
-    React.useEffect(() => {
-        const timerId = setInterval(() => {
-            setTime(new Date());
-        }, 1000);
-
-        return () => {
-            clearInterval(timerId);
-        };
-    }, []);
-
-    const formatDate = (date: Date) => {
-        const options: Intl.DateTimeFormatOptions = {
-            weekday: 'long',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-        };
-        return date.toLocaleDateString('vi-VN', options);
-    };
-
-    const formatTime = (date: Date) => {
-        return date.toLocaleTimeString('vi-VN');
-    };
-
-    return (
-        <div className="text-right text-red-100">
-            <p className="text-sm">{formatDate(time)}</p>
-            <p className="text-lg font-bold tracking-wider">{formatTime(time)}</p>
-        </div>
-    );
-};
-
-// Component để nhúng biểu đồ TradingView
-const TradingViewWidget: React.FC = () => {
-    const containerRef = React.useRef<HTMLDivElement>(null);
-    const widgetLoaded = React.useRef(false);
-
-    React.useEffect(() => {
-        if (!containerRef.current || widgetLoaded.current) {
-            return;
-        }
-
-        const script = document.createElement('script');
-        script.src = 'https://s3.tradingview.com/tv.js';
-        script.type = 'text/javascript';
-        script.async = true;
-        script.onload = () => {
-            if (containerRef.current && typeof (window as any).TradingView !== 'undefined') {
-                new (window as any).TradingView.widget({
-                    "autosize": true,
-                    "symbol": "OANDA:XAUUSD",
-                    "interval": "60",
-                    "timezone": "Asia/Ho_Chi_Minh",
-                    "theme": "dark",
-                    "style": "1",
-                    "locale": "vi_VN",
-                    "toolbar_bg": "#f1f3f6",
-                    "enable_publishing": false,
-                    "allow_symbol_change": true,
-                    "container_id": "tradingview_chart_container"
-                });
-                widgetLoaded.current = true;
-            }
-        };
-
-        document.body.appendChild(script);
-
-        return () => {
-            if (document.body.contains(script)) {
-                document.body.removeChild(script);
-            }
-            if (containerRef.current) {
-                containerRef.current.innerHTML = '';
-            }
-        };
-    }, []);
-
-    return (
-        <div ref={containerRef} id="tradingview_chart_container" style={{ height: '100%', width: '100%' }} />
-    );
-};
-
+import React, { useState, useEffect } from 'react';
+import { UserProfile, ViewState, User } from './types';
+import Navbar from './components/Navbar';
+import CreateView from './views/CreateView';
+import ListView from './views/ListView';
+import DashboardView from './views/DashboardView';
+import CollectorView from './views/CollectorView';
+import LoginView from './views/LoginView';
+import AdminUserView from './views/AdminUserView';
+import { initAuth } from './utils/auth';
+import { ShieldAlert } from 'lucide-react';
 
 const App: React.FC = () => {
-  const [sheetData, setSheetData] = React.useState<string[][]>([]);
-  const [headerData, setHeaderData] = React.useState({
-    title: 'VÀNG BẠC HÙNG HẠ',
-    address: 'Đ/c: 136 - Phố huyện',
-    phone: 'ĐT: 0356999659',
-  });
-  const [loading, setLoading] = React.useState<boolean>(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [view, setView] = useState<ViewState>('list');
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [isReadOnly, setIsReadOnly] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  const fetchData = React.useCallback(async (isManual: boolean = false) => {
-    if (isManual) {
-        setLoading(true);
-    }
-    setError(null);
-    
-    try {
-      const tableUrl = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:csv&t=${new Date().getTime()}`; // Lấy sheet đầu tiên
-      const headerUrl = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?sheet=Sheet2&tqx=out:csv&t=${new Date().getTime()}`; // Lấy Sheet2
-
-      const [tableResponse, headerResponse] = await Promise.all([
-        fetch(tableUrl),
-        fetch(headerUrl)
-      ]);
-      
-      if (!tableResponse.ok) {
-        throw new Error('Không thể tải dữ liệu bảng giá. Vui lòng kiểm tra lại Sheet ID và quyền truy cập.');
-      }
-
-      const csvText = await tableResponse.text();
-      const data = parseCSV(csvText);
-      
-      if (data.length === 0 || (data.length === 1 && data[0].length === 1 && data[0][0] === '')) {
-          throw new Error('Bảng tính (sheet đầu tiên) trống hoặc không có dữ liệu.');
-      }
-
-      const threeColumnData = data.map(row => row.slice(0, 3));
-      setSheetData(threeColumnData);
-
-      if (headerResponse.ok) {
-        const headerCsvText = await headerResponse.text();
-        const headerCsvData = parseCSV(headerCsvText);
-        // Lấy dữ liệu từ B2, B3, B4. Mảng bắt đầu từ 0 nên ta lấy hàng 1, 2, 3.
-        if (headerCsvData.length >= 4) {
-            setHeaderData({
-                title: headerCsvData[1]?.[1] || 'VÀNG BẠC HÙNG HẠ', // B2
-                address: headerCsvData[2]?.[1] ? `Đ/c: ${headerCsvData[2][1]}` : '', // B3
-                phone: headerCsvData[3]?.[1] ? `ĐT: ${headerCsvData[3][1]}` : '' // B4
-            });
-        }
-      } else {
-        console.warn('Không thể tải dữ liệu tiêu đề từ Sheet2.');
-      }
-
-    } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : 'Đã có lỗi xảy ra. Hãy chắc chắn rằng bảng tính của bạn được chia sẻ công khai.');
-    } finally {
-      if (isManual) {
-        setLoading(false);
-      }
+  // Initialize Auth System (Seed Admin)
+  useEffect(() => {
+    initAuth();
+    const storedUser = localStorage.getItem('hoso_current_user');
+    if (storedUser) {
+      setCurrentUser(JSON.parse(storedUser));
     }
   }, []);
 
-  // Tải dữ liệu lần đầu
-  React.useEffect(() => {
-    fetchData(true);
-  }, [fetchData]);
+  // Load from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('hoso_data');
+      if (stored) {
+        setProfiles(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.error("Failed to load data", e);
+    }
+  }, []);
 
-  // Tự động làm mới dữ liệu sau mỗi 10 giây
-  React.useEffect(() => {
-    const interval = setInterval(() => {
-      fetchData(false); // false để không hiển thị spinner loading
-    }, 10000); // 10 giây
+  // Save to localStorage whenever profiles change
+  useEffect(() => {
+    try {
+      localStorage.setItem('hoso_data', JSON.stringify(profiles));
+    } catch (e) {
+      console.error("Failed to save data (likely quota exceeded)", e);
+      alert("Cảnh báo: Bộ nhớ trình duyệt sắp đầy. Vui lòng xóa bớt hồ sơ cũ.");
+    }
+  }, [profiles]);
 
-    return () => clearInterval(interval); // Dọn dẹp khi component unmount
-  }, [fetchData]);
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+    localStorage.setItem('hoso_current_user', JSON.stringify(user));
+    setView('list');
+  };
+
+  const handleLogout = () => {
+    // Unlock profile if user logs out while viewing
+    if (activeProfileId && currentUser) {
+       unlockProfile(activeProfileId, currentUser.id);
+    }
+
+    setCurrentUser(null);
+    localStorage.removeItem('hoso_current_user');
+    setActiveProfileId(null);
+    setView('list'); 
+  };
+
+  const unlockProfile = (profileId: string, userId: string) => {
+      setProfiles(prev => prev.map(p => {
+          if (p.id === profileId && p.viewedBy === userId) {
+              const { viewedBy, viewedByName, ...rest } = p;
+              return rest as UserProfile;
+          }
+          return p;
+      }));
+  };
+
+  const handleCreateProfile = (newProfile: UserProfile) => {
+    setProfiles(prev => [newProfile, ...prev]);
+    setActiveProfileId(newProfile.id);
+    setIsReadOnly(false); 
+    setView('collecting');
+  };
+
+  const handleUpdateProfile = (updatedProfile: UserProfile) => {
+    setProfiles(prev => prev.map(p => p.id === updatedProfile.id ? updatedProfile : p));
+  };
+
+  const handleSelectProfile = (profile: UserProfile, mode: 'view' | 'edit') => {
+    if (!currentUser) return;
+
+    // 1. CHECK LOCK STATUS
+    if (profile.viewedBy && profile.viewedBy !== currentUser.id) {
+        alert(`Hồ sơ này đang được xem bởi ${profile.viewedByName}. Vui lòng thử lại sau.`);
+        return;
+    }
+
+    // 2. APPLY LOCK
+    const lockedProfile = {
+        ...profile,
+        viewedBy: currentUser.id,
+        viewedByName: currentUser.fullName
+    };
+    
+    // Optimistically update state to show lock immediately (simulating realtime DB)
+    handleUpdateProfile(lockedProfile);
+    setActiveProfileId(profile.id);
+    
+    // 3. PERMISSION CHECK
+    const isCreator = profile.collectorId === currentUser.id;
+    const isAdmin = currentUser.role === 'admin';
+    const hasEditRights = isAdmin || isCreator;
+
+    if (mode === 'edit' && !hasEditRights) {
+      alert("Bạn không có quyền chỉnh sửa hồ sơ này.");
+      setIsReadOnly(true);
+    } else {
+      setIsReadOnly(mode === 'view');
+    }
+
+    setView('collecting');
+  };
+
+  const handleFinishOrBack = () => {
+    // UNLOCK PROFILE when leaving the view
+    if (activeProfileId && currentUser) {
+        unlockProfile(activeProfileId, currentUser.id);
+    }
+
+    setActiveProfileId(null);
+    setView('list');
+  };
+
+  // Auth Guard
+  if (!currentUser) {
+    return <LoginView onLoginSuccess={handleLogin} />;
+  }
+
+  const renderContent = () => {
+    switch (view) {
+      case 'create':
+        return (
+          <CreateView 
+            onCreate={handleCreateProfile} 
+            currentUser={currentUser} 
+            existingProfiles={profiles}
+          />
+        );
+      case 'list':
+        return <ListView profiles={profiles} onSelectProfile={handleSelectProfile} currentUser={currentUser} />;
+      case 'dashboard':
+        return (
+          <DashboardView 
+            profiles={profiles} 
+            currentUser={currentUser} 
+            onNavigateToAdmin={() => setView('admin_users')}
+          />
+        );
+      case 'admin_users':
+        return currentUser.role === 'admin' ? <AdminUserView /> : <DashboardView profiles={profiles} currentUser={currentUser} />;
+      case 'collecting':
+        const activeProfile = profiles.find(p => p.id === activeProfileId);
+        if (!activeProfile) {
+            setView('list');
+            return null;
+        }
+        return (
+          <CollectorView 
+            profile={activeProfile} 
+            onUpdate={handleUpdateProfile}
+            onFinish={handleFinishOrBack} // Finish = Unlock + Back
+            onBack={handleFinishOrBack}   // Back = Unlock + Back
+            readOnly={isReadOnly}
+            currentUser={currentUser}
+          />
+        );
+      default:
+        return <ListView profiles={profiles} onSelectProfile={handleSelectProfile} currentUser={currentUser} />;
+    }
+  };
 
   return (
-    <main className="bg-gradient-to-br from-red-600 to-red-800 min-h-screen w-full flex flex-col items-center p-4 sm:p-6 md:p-8 text-white">
-      <div className="w-full max-w-7xl">
-        
-        <header className="mb-8 flex justify-between items-start">
-          <div className="text-left">
-            <h2 className="text-3xl md:text-4xl font-bold text-yellow-300 tracking-wider font-heading">{headerData.title}</h2>
-            <p className="text-base text-red-100">{headerData.address}</p>
-            <p className="text-base text-red-100">{headerData.phone}</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <Clock />
-          </div>
-        </header>
-
-        <div className="text-center">
-            <div className="flex justify-center items-center gap-4 mb-8">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-10 h-10 md:w-12 md:h-12 text-yellow-300">
-                    <path d="M11.25 4.533A9.707 9.707 0 0 0 6 3a9.735 9.735 0 0 0-3.25.555.75.75 0 0 0-.5.707v14.25a.75.75 0 0 0 .5.707A9.735 9.735 0 0 0 6 21a9.735 9.735 0 0 0 3.25-.555.75.75 0 0 0 .5-.707V5.24a.75.75 0 0 0-.5-.707Z" />
-                    <path d="M15.75 4.533A9.707 9.707 0 0 0 10.5 3a9.735 9.735 0 0 0-3.25.555.75.75 0 0 0-.5.707V19.5a.75.75 0 0 0 .5.707A9.735 9.735 0 0 0 10.5 21a9.735 9.735 0 0 0 3.25-.555.75.75 0 0 0 .5-.707V5.24a.75.75 0 0 0-.5-.707Z" />
-                    <path d="M20.25 4.533A9.707 9.707 0 0 0 15 3a9.735 9.735 0 0 0-3.25.555.75.75 0 0 0-.5.707V19.5a.75.75 0 0 0 .5.707A9.735 9.735 0 0 0 15 21a9.735 9.735 0 0 0 3.25-.555.75.75 0 0 0 .5-.707V5.24a.75.75 0 0 0-.5-.707Z" />
-                </svg>
-                 <h1 className="text-4xl md:text-5xl font-bold text-yellow-300 uppercase font-heading">
-                    Bảng giá vàng hôm nay
+    <div className="min-h-screen bg-slate-50 font-sans text-gray-900">
+        {/* Top Header for Main Views */}
+        {view !== 'collecting' && (
+            <div className="bg-white px-4 py-3 shadow-sm border-b border-red-700 sticky top-0 z-30 flex justify-between items-center">
+                <h1 className="text-lg font-bold text-red-700 flex items-center gap-2 uppercase">
+                    <ShieldAlert className="text-red-600 fill-yellow-400" size={28} />
+                    Công An Xã Kiều Phú
                 </h1>
-                <button
-                    onClick={() => fetchData(true)}
-                    className="ml-4 p-2 bg-yellow-300 text-red-800 rounded-full hover:bg-yellow-400 transition-transform duration-200 active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                    aria-label="Cập nhật dữ liệu"
-                    disabled={loading}
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.667 0l3.181-3.183m-4.991-2.691L7.985 5.982m13.03 4.993l-3.181-3.182a8.25 8.25 0 00-11.667 0L2.985 14.651" />
-                    </svg>
-                </button>
-            </div>
-        </div>
-        
-        {loading && sheetData.length === 0 && (
-           <div className="flex justify-center items-center h-60">
-             <svg className="animate-spin h-10 w-10 text-yellow-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-             </svg>
-           </div>
-        )}
-
-        {error && <div className="bg-red-900/80 border border-yellow-400/50 text-white p-4 rounded-lg my-6 whitespace-pre-wrap">{error}</div>}
-
-        {!error && sheetData.length > 0 && (
-          <div className="mt-8 w-full flex flex-col lg:flex-row gap-8 items-start">
-            
-            <div className="w-full lg:w-[60%]">
-                <div className="bg-black/30 backdrop-blur-sm border border-yellow-400/40 rounded-xl shadow-2xl shadow-black/40 p-4 md:p-6">
-                    <table className="w-full text-left border-collapse table-fixed">
-                        <thead>
-                        <tr className="border-b border-yellow-400/60">
-                            {sheetData[0] && sheetData[0].map((headerCell, index) => (
-                            <th key={index} className={`p-4 sm:p-5 font-bold text-yellow-200 bg-black/50 uppercase text-lg md:text-xl whitespace-normal font-heading ${index > 0 ? 'w-[30%] text-right' : 'w-[40%]'}`}>
-                                {headerCell}
-                            </th>
-                            ))}
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {sheetData.slice(1).map((row, rowIndex) => (
-                            <tr key={rowIndex} className="border-b border-yellow-500/20 last:border-b-0 hover:bg-white/10 transition-colors duration-200">
-                            {row.map((cell, cellIndex) => (
-                                <td key={cellIndex} className={`p-4 sm:p-5 text-gray-50 text-xl md:text-2xl whitespace-normal break-words ${cellIndex > 0 ? 'font-bold text-right' : ''}`}>
-                                {cell}
-                                </td>
-                            ))}
-                            </tr>
-                        ))}
-                        </tbody>
-                    </table>
+                <div className="text-xs text-right">
+                  <div className="font-bold text-gray-700">{currentUser.fullName}</div>
+                  <div className="text-gray-500 capitalize">{currentUser.role === 'admin' ? 'Chỉ huy' : 'Cán bộ'}</div>
                 </div>
             </div>
-
-            <div className="w-full lg:w-[40%]">
-                <h2 className="text-2xl font-bold text-yellow-200 uppercase mb-4 text-center lg:text-left font-heading">Biểu đồ XAU/USD</h2>
-                <div className="bg-black/30 backdrop-blur-sm border border-yellow-400/40 rounded-xl shadow-2xl shadow-black/40 overflow-hidden" style={{height: '450px'}}>
-                   <TradingViewWidget />
-                </div>
-            </div>
-
-          </div>
         )}
-        
-        <footer className="mt-12 text-red-200/80 text-sm text-center">
-          <p>Tạo bởi AI với React & Tailwind CSS</p>
-        </footer>
-      </div>
-    </main>
+
+      <main>
+        {renderContent()}
+      </main>
+
+      {/* Navigation */}
+      {view !== 'collecting' && (
+        <Navbar 
+          currentView={view} 
+          onChangeView={setView} 
+          onLogout={handleLogout} 
+          currentUser={currentUser}
+        />
+      )}
+    </div>
   );
 };
 
-// FIX: Add default export for the App component so it can be imported in index.tsx.
 export default App;
